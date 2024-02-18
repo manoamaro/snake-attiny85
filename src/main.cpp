@@ -1,8 +1,9 @@
+#define __AVR__ 1
+
 #include <util/delay.h>
 #include "utils.h"
 #include "snake.h"
-#include <TinyWireM.h>
-#include <Tiny4kOLED.h>
+#include "lcdgfx.h"
 
 #define WIDTH 128
 #define HEIGHT 64
@@ -11,8 +12,6 @@
 #define STATE_GAME 1
 #define STATE_GAME_OVER 2
 
-uint64_t _millis = 0;
-
 uint8_t state = 0;
 
 Snake snake;
@@ -20,12 +19,15 @@ uint8_t food[2] = {0, 0};
 uint16_t score = 0;
 uint8_t speed = 1;
 
+DisplaySSD1306_128x64_I2C display(-1); // or (-1,{busId, addr, scl, sda, frequency})
+
 void setupOLED(void)
 {
-  oled.begin(WIDTH, HEIGHT, sizeof(tiny4koled_init_128x64br), tiny4koled_init_128x64br);
-  oled.setFont(FONT6X8);
-  oled.clear();
-  oled.on();
+  display.begin();
+  display.fill(0x00);
+  display.setFixedFont(ssd1306xled_font6x8);
+  display.printFixed(0, 8, "Snake", STYLE_NORMAL);
+  lcd_delay(1000);
 }
 
 void drawSnake()
@@ -33,39 +35,29 @@ void drawSnake()
   auto body = snake.getBody();
   for (int i = 0; i < snake.getSize(); i++)
   {
-    oled.setCursor(body[i][0], body[i][1]);
-    oled.print("o");
+    display.printFixed(body[i][0], body[i][1], "o", STYLE_NORMAL);
   }
 }
 
 void drawFood()
 {
-  oled.setCursor(food[0], food[1]);
-  oled.print("*");
+  display.printFixed(food[0], food[1], "*", STYLE_NORMAL);
 }
 
 void drawScore()
 {
-  oled.setCursor(0, 0);
-  oled.print(F("Score: "));
-  oled.print(score);
+  display.setTextCursor(0, 0);
+  display.write("Score: ");
+  display.write(score);
 }
 
 void drawGameOver()
 {
-  oled.clear();
-  oled.setCursor(0, 0);
-  oled.print(F("Game Over!"));
-  oled.setCursor(0, 10);
-  oled.print(F("Score: "));
-  oled.print(score);
-  oled.setCursor(0, 20);
-  oled.print(F("Speed: "));
-  oled.print(speed);
-  oled.setCursor(0, 30);
-  oled.print(F("Press reset"));
-  oled.setCursor(0, 40);
-  oled.print(F("to play again"));
+  display.clear();
+  display.printFixed(0, 0, "Game Over", STYLE_NORMAL);
+  display.printFixed(0, 10, "Score: ", STYLE_NORMAL);
+  display.printFixed(0, 30, "Press any button", STYLE_NORMAL);
+  state = 0;
 }
 
 void generateFood()
@@ -80,10 +72,10 @@ void generateFood()
 
 void setupButtons(void)
 {
-  // set 4 buttons as input. PB1, PB3, PB4, PB5
-  DDRB &= ~((1 << PB1) | (1 << PB3) | (1 << PB4) | (1 << PB5));
+  // set 4 buttons as input. PB0, PB1, PB2, PB5
+  DDRB &= ~((1 << PB0) | (1 << PB1) | (1 << PB2) | (1 << PB5));
   // enable pull-up resistors
-  PORTB |= (1 << PB1) | (1 << PB3) | (1 << PB4) | (1 << PB5);
+  PORTB |= (1 << PB0) | (1 << PB1) | (1 << PB2) | (1 << PB5);
 }
 
 void readInput(void)
@@ -93,7 +85,8 @@ void readInput(void)
   {
   case STATE_START:
   case STATE_GAME_OVER:
-    if (!(PINB & (1 << PB1)) || !(PINB & (1 << PB3)) || !(PINB & (1 << PB4)) || !(PINB & (1 << PB5))) {
+    if (!(PINB & (1 << PB1)) || !(PINB & (1 << PB3)) || !(PINB & (1 << PB4)) || !(PINB & (1 << PB5)))
+    {
       snake = Snake();
       speed = 1;
       score = 0;
@@ -123,77 +116,55 @@ void readInput(void)
   }
 }
 
-void setupTimer0(void) {
-  // setup timer to count milliseconds
-  TCCR0A = 0; // set entire TCCR0A register to 0
-  TCCR0B = 0; // same for TCCR0B
-  TCNT0  = 0; // initialize counter value to 0
-  // set compare match register for 1hz increments
-  OCR0A = 249; // = (16*10^6) / (1000*64) - 1 (must be <256)
-  // turn on CTC mode
-  TCCR0A |= (1 << WGM01);
-  // Set CS01 and CS00 bits for 64 prescaler
-  TCCR0B |= (1 << CS01) | (1 << CS00);
-  // enable timer compare interrupt
-  TIMSK |= (1 << OCIE0A);
+void setup(void)
+{
+  setupOLED();
+  setupButtons();
 }
 
-// Timer 0 compare interrupt
-ISR(TIMER0_COMPA_vect) {
-  // increment the millis counter
-  _millis++;
+void loop(void)
+{
+  readInput();
+  if (state == 0)
+  {
+    display.clear();
+    display.printFixed(0, 0, "Press any button", STYLE_NORMAL);
+  }
+  else if (state == 1)
+  {
+    // Game loop
+    snake.move();
+    if (snake.isCollidingWithSelf() || snake.isOutOfBounds(WIDTH, HEIGHT))
+    {
+      state = 2;
+    }
+    else if (snake.isCollidingWithFood(food[0], food[1]))
+    {
+      snake.grow();
+      score++;
+      if (score % 5 == 0)
+      {
+        speed++;
+      }
+      generateFood();
+    }
+    display.clear();
+    drawSnake();
+    drawFood();
+    drawScore();
+  }
+  else if (state == 2)
+  {
+    drawGameOver();
+  }
 }
 
 int main(void)
 {
-  setupOLED();
-  setupButtons();
-  setupTimer0();
-
-  while (true)  
+  setup();
+  while (1)
   {
-    readInput();
-    // renders at 24fps, 41ms per frame
-    if (_millis < 41) {
-      continue;
-    }
-    _millis = 0;
-    if (state == 0)
-    {
-      oled.clear();
-      oled.setCursor(0, 0);
-      oled.print(F("Press any button"));
-      oled.setCursor(0, 10);
-      oled.print(F("to start"));
-    }
-    else if (state == 1)
-    {
-      // Game loop
-      snake.move();
-      if (snake.isCollidingWithSelf() || snake.isOutOfBounds(WIDTH, HEIGHT))
-      {
-        state = 2;
-      }
-      else if (snake.isCollidingWithFood(food[0], food[1]))
-      {
-        snake.grow();
-        score++;
-        if (score % 5 == 0)
-        {
-          speed++;
-        }
-        generateFood();
-      }
-      oled.clear();
-      drawSnake();
-      drawFood();
-      drawScore();
-    }
-    else if (state == 2)
-    {
-      drawGameOver();
-    }
+    loop();
   }
-
   return 0;
 }

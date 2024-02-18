@@ -2,7 +2,7 @@
 #include "snake.cpp"
 #include <stdio.h>
 
-void check_body_pos(uint8_t (*body)[2], int i, int x, int y) {
+void check_body_pos(const uint8_t (*body)[2], int i, int x, int y) {
     auto str = new char[100];
     snprintf(str, 100, "X position of the snake's body %d", i);
     UNITY_TEST_ASSERT_EQUAL_UINT8(x, body[i][0], __LINE__, str);
@@ -14,7 +14,7 @@ void test_snake_initial_state(void) {
     Snake snake;
 
     UNITY_TEST_ASSERT_EQUAL_UINT8(5, snake.getSize(), __LINE__, "Initial size of the snake should be 5");
-    uint8_t (*body)[2] = snake.getBody();
+    const uint8_t (*body)[2] = snake.getBody();
     for (int i = 1; i < 5; i++) {
         check_body_pos(body, i, 10, 10 + i);
     }
@@ -26,7 +26,7 @@ void test_snake_move_up(void) {
     snake.changeDirection(SNAKE_UP);
     snake.move();
 
-    uint8_t (*body)[2] = snake.getBody();
+    const uint8_t (*body)[2] = snake.getBody();
     for (int i = 0; i < 5; i++) {
         check_body_pos(body, i, 10, 10 + i - 1);
     }
@@ -41,7 +41,7 @@ void test_snake_move_right(void) {
     snake.move();
     snake.move();
 
-    uint8_t (*body)[2] = snake.getBody();
+    const uint8_t (*body)[2] = snake.getBody();
     check_body_pos(body, 0, 13, 10);
     check_body_pos(body, 1, 12, 10);
     check_body_pos(body, 2, 11, 10);
@@ -57,7 +57,7 @@ void test_snake_move_left(void) {
     snake.move();
     snake.move();
 
-    uint8_t (*body)[2] = snake.getBody();
+    const uint8_t (*body)[2] = snake.getBody();
     check_body_pos(body, 0, 7, 10);
     check_body_pos(body, 1, 8, 10);
     check_body_pos(body, 2, 9, 10);
